@@ -1,14 +1,11 @@
-import asyncio
-from concurrent.futures import ThreadPoolExecutor
 from flask import Blueprint, render_template, request, jsonify, flash, redirect, url_for
-from auth import AuthManager
+from admin_helper import admin_helper
 from config import ADMIN_DAILY_LIMIT
 from logger_utils import LOGGER
 
 logger = LOGGER(__name__)
 
 admin_bp = Blueprint('admin', __name__)
-auth_manager = AuthManager()
 
 @admin_bp.route('/admin')
 def admin_panel():
@@ -49,19 +46,11 @@ def create_api_key():
         if not name:
             return jsonify({"error": "Key name is required"}), 400
         
-        # Create API key using asyncio
-        async def _create_key():
-            return await auth_manager.create_api_key(
-                owner=name,
-                is_admin=(daily_limit >= 10000000),
-                daily_limit=daily_limit,
-                expiry_days=expiry_days
-            )
+        if not isinstance(daily_limit, int) or daily_limit < 1:
+            return jsonify({"error": "Invalid daily limit"}), 400
         
-        # Use thread executor to handle async in sync context  
-        with ThreadPoolExecutor() as executor:
-            future = executor.submit(asyncio.run, _create_key())
-            api_key = future.result()
+        # Create API key using helper
+        api_key = admin_helper.create_api_key_sync(name, daily_limit, expiry_days)
         
         return jsonify({
             "success": True,
@@ -71,23 +60,16 @@ def create_api_key():
         
     except Exception as e:
         logger.error(f"Error creating API key: {e}")
-        return jsonify({"error": "Failed to create API key"}), 500
+        return jsonify({"error": f"Failed to create API key: {str(e)}"}), 500
 
 @admin_bp.route('/admin/delete-key/<key_id>', methods=['DELETE'])
 def delete_api_key(key_id):
     """Delete an API key"""
     try:        
-        # Delete API key from database using asyncio
-        async def _delete_key():
-            from database import api_keys_collection
-            return await api_keys_collection.delete_one({"key": key_id})
+        # Delete API key using helper
+        deleted = admin_helper.delete_api_key_sync(key_id)
         
-        # Use thread executor to handle async in sync context
-        with ThreadPoolExecutor() as executor:
-            future = executor.submit(asyncio.run, _delete_key())
-            result = future.result()
-        
-        if result.deleted_count > 0:
+        if deleted:
             return jsonify({
                 "success": True,
                 "message": "API key deleted successfully"
@@ -97,38 +79,19 @@ def delete_api_key(key_id):
             
     except Exception as e:
         logger.error(f"Error deleting API key: {e}")
-        return jsonify({"error": "Failed to delete API key"}), 500
+        return jsonify({"error": f"Failed to delete API key: {str(e)}"}), 500
 
 @admin_bp.route('/admin/keys', methods=['GET'])
 def get_api_keys():
     """Get all API keys"""
     try:
-        async def _get_keys():
-            from database import api_keys_collection
-            cursor = api_keys_collection.find({})
-            keys = []
-            
-            async for key_doc in cursor:
-                keys.append({
-                    "key_id": key_doc.get("key"),
-                    "name": key_doc.get("owner", key_doc.get("name", "Unknown")),
-                    "daily_limit": key_doc.get("daily_limit", 1000),
-                    "daily_usage": key_doc.get("daily_used", 0),
-                    "is_active": key_doc.get("is_active", True),
-                    "expires_at": key_doc.get("expires_at"),
-                    "created_at": key_doc.get("created_at")
-                })
-            return keys
-        
-        # Use thread executor to handle async in sync context
-        with ThreadPoolExecutor() as executor:
-            future = executor.submit(asyncio.run, _get_keys())
-            keys = future.result()
+        # Get keys using helper
+        keys = admin_helper.get_api_keys_sync()
         return jsonify(keys)
         
     except Exception as e:
         logger.error(f"Error getting API keys: {e}")
-        return jsonify({"error": "Failed to get API keys"}), 500
+        return jsonify({"error": f"Failed to get API keys: {str(e)}"}), 500
 
 @admin_bp.route('/admin/stats')
 def get_stats():
@@ -197,58 +160,8 @@ def get_stats():
 def get_enhanced_stats():
     """Get enhanced statistics with weekly/monthly data"""
     try:
-        async def _get_enhanced_stats():
-            from database import api_logs_collection, api_keys_collection
-            from datetime import datetime, timedelta
-            
-            now = datetime.utcnow()
-            today = now.replace(hour=0, minute=0, second=0, microsecond=0)
-            week_start = today - timedelta(days=7)
-            month_start = today - timedelta(days=30)
-            
-            # Get various time period stats
-            today_requests = await api_logs_collection.count_documents({
-                "timestamp": {"$gte": today}
-            })
-            
-            week_requests = await api_logs_collection.count_documents({
-                "timestamp": {"$gte": week_start}
-            })
-            
-            month_requests = await api_logs_collection.count_documents({
-                "timestamp": {"$gte": month_start}
-            })
-            
-            # Active keys
-            active_keys = await api_keys_collection.count_documents({"is_active": True})
-            
-            # Simulate telegram and API responses for demo
-            telegram_responses = await api_logs_collection.count_documents({
-                "timestamp": {"$gte": today},
-                "source": "telegram"
-            }) or today_requests // 2
-            
-            api_responses = await api_logs_collection.count_documents({
-                "timestamp": {"$gte": today},
-                "source": "api"
-            }) or today_requests // 2
-            
-            return {
-                "today_requests": today_requests,
-                "week_requests": week_requests,
-                "month_requests": month_requests,
-                "active_keys": active_keys,
-                "telegram_responses": telegram_responses,
-                "api_responses": api_responses,
-                "today_trend": "+12% from yesterday",
-                "week_trend": "+8% from last week", 
-                "month_trend": "+25% from last month"
-            }
-        
-        # Use thread executor to handle async in sync context
-        with ThreadPoolExecutor() as executor:
-            future = executor.submit(asyncio.run, _get_enhanced_stats())
-            stats = future.result()
+        # Get stats using helper
+        stats = admin_helper.get_enhanced_stats_sync()
         return jsonify(stats)
         
     except Exception as e:

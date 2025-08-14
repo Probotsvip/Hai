@@ -6,6 +6,12 @@ This is a Flask-based YouTube API service that provides music streaming capabili
 
 ## Recent Changes
 
+- **Admin Panel Enhanced (August 14, 2025)**: Created powerful professional admin panel with API key authentication (key=NOTTY_BOY)
+- **Advanced UI/UX**: Implemented stunning 3D professional design with comprehensive NOTTY BOY branding throughout
+- **Custom Daily Limits**: Added support for custom daily request limits up to 100 trillion per day
+- **Enhanced Analytics**: Comprehensive statistics showing today/week/month requests, Telegram & API response tracking
+- **Copy Functionality**: Added copy-to-clipboard features for API keys with visual feedback
+- **Async Issues Resolved**: Fixed all event loop conflicts with new AdminHelper threading system
 - **Migration Complete (August 14, 2025)**: Successfully migrated from Replit Agent to standard Replit environment
 - **YouTube Handler Updated**: Replaced yt-dlp with Clipto API for reliable 720p MP4 extraction
 - **Dependencies Fixed**: Corrected package names and resolved all import issues  

@@ -446,10 +446,15 @@
                         </div>
                         <div class="col-md-4 mb-3">
                             <label class="form-label">Daily Limit</label>
-                            <select class="form-control" id="keyLimit">
-                                <option value="1000">Regular (1,000/day)</option>
-                                <option value="10000000">Admin (10M/day)</option>
-                            </select>
+                            <div class="input-group">
+                                <select class="form-control" id="keyLimitPreset" onchange="updateDailyLimit()">
+                                    <option value="custom">Custom</option>
+                                    <option value="1000">Regular (1,000/day)</option>
+                                    <option value="10000000">Admin (10M/day)</option>
+                                    <option value="100000000000000">Unlimited (100T/day)</option>
+                                </select>
+                                <input type="number" class="form-control" id="keyLimit" value="1000" min="1" max="100000000000000" step="1" placeholder="Custom limit">
+                            </div>
                         </div>
                         <div class="col-md-4 mb-3">
                             <label class="form-label">Expiry (Days)</label>
@@ -547,6 +552,20 @@
             }
         }
 
+        // Update daily limit based on preset
+        function updateDailyLimit() {
+            const preset = document.getElementById('keyLimitPreset').value;
+            const customInput = document.getElementById('keyLimit');
+            
+            if (preset !== 'custom') {
+                customInput.value = preset;
+                customInput.style.display = 'none';
+            } else {
+                customInput.style.display = 'block';
+                customInput.focus();
+            }
+        }
+
         // Create new API key
         document.getElementById('createKeyForm').addEventListener('submit', async (e) => {
             e.preventDefault();
@@ -554,6 +573,11 @@
             const name = document.getElementById('keyName').value;
             const limit = parseInt(document.getElementById('keyLimit').value);
             const expiry = parseInt(document.getElementById('keyExpiry').value);
+            
+            if (!name || !limit || limit < 1) {
+                alert('Please fill all fields with valid values');
+                return;
+            }
             
             try {
                 const response = await fetch('/admin/create-key', {
@@ -564,12 +588,14 @@
                 
                 const result = await response.json();
                 
-                if (response.ok) {
-                    alert(`API Key created successfully!\n\nKey: ${result.key_id}\n\nPlease save this key as it won't be shown again.`);
+                if (response.ok && result.success) {
+                    alert(`API Key created successfully!\n\nName: ${name}\nDaily Limit: ${limit.toLocaleString()}\nKey: ${result.key_id}\n\nPlease save this key as it won't be shown again.`);
                     document.getElementById('createKeyForm').reset();
+                    document.getElementById('keyLimit').value = 1000;
+                    document.getElementById('keyLimitPreset').value = 'custom';
                     loadApiKeys();
                 } else {
-                    alert('Error creating API key: ' + result.error);
+                    alert('Error creating API key: ' + (result.error || 'Unknown error'));
                 }
             } catch (error) {
                 alert('Network error creating API key');
