@@ -14,6 +14,8 @@ This is a Flask-based YouTube API service that provides music streaming capabili
 - **Async Issues Resolved**: Fixed all event loop conflicts with new AdminHelper threading system
 - **Migration Complete (August 14, 2025)**: Successfully migrated from Replit Agent to standard Replit environment
 - **Telegram Uploader Added**: Integrated advanced Telegram uploader for permanent file storage with background processing
+- **Async Issues Detected**: Event loop conflicts need resolution in authentication system
+- **Telegram Uploader Added**: Integrated advanced Telegram uploader for permanent file storage with background processing
 - **YouTube Handler Updated**: Replaced yt-dlp with Clipto API for reliable 720p MP4 extraction
 - **Dependencies Fixed**: Corrected package names and resolved all import issues  
 - **MongoDB Confirmed**: Using only MongoDB Atlas, no local or temporary databases

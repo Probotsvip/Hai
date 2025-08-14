@@ -37,7 +37,8 @@ class TelegramUploader:
         
         # Telegram Bot API doesn't support message search for bots
         # We rely on database tracking instead in db_manager.get_telegram_file()
-        logger.debug(f"Search skipped - relying on database tracking for {video_id}")
+        if video_id:
+            logger.debug(f"Search skipped - relying on database tracking for {video_id}")
         return None
     
     def _is_matching_message(self, message: Dict[str, Any], video_id: str, quality: str = None) -> bool:
@@ -45,7 +46,7 @@ class TelegramUploader:
         caption = message.get('caption', '').lower()
         
         # Must contain video ID
-        if f"#{video_id.lower()}" not in caption:
+        if video_id and f"#{video_id.lower()}" not in caption:
             return False
         
         # If quality specified, must match
