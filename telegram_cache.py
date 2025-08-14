@@ -37,14 +37,29 @@ class TelegramCache:
     async def get_cached_content(self, video_id: str, stream_type: str) -> Optional[Dict[str, Any]]:
         """Check if content is cached and return metadata"""
         try:
+            # Try exact match first
             cache_entry = await cache_collection.find_one({
                 "video_id": video_id,
                 "stream_type": stream_type
             })
             
+            if not cache_entry:
+                # Try alternate stream type (video/audio mapping)
+                alt_stream_type = "video" if stream_type == "audio" else "audio"
+                cache_entry = await cache_collection.find_one({
+                    "video_id": video_id,
+                    "stream_type": alt_stream_type
+                })
+                
+                if cache_entry:
+                    logger.info(f"Found cached content for {video_id} with alternate type ({alt_stream_type} instead of {stream_type})")
+                    return cache_entry
+            
             if cache_entry:
                 logger.info(f"Found cached content for {video_id} ({stream_type})")
                 return cache_entry
+            else:
+                logger.debug(f"No cached content found for {video_id} ({stream_type})")
             
         except Exception as e:
             logger.error(f"Error checking cache for {video_id}: {e}")
@@ -60,23 +75,32 @@ class TelegramCache:
             logger.error("Cannot cache content: Telegram bot not available")
             return None
         
+        logger.info(f"Starting Telegram upload for {video_info['id']} ({stream_type})")
+        
         try:
             # Download file to temporary location
+            logger.info(f"Downloading file from: {video_info['direct_url'][:100]}...")
             response = requests.get(video_info['direct_url'], stream=True, timeout=300)
             response.raise_for_status()
             
             # Create temporary file
             file_extension = 'mp4' if stream_type == 'video' else 'm4a'
             with tempfile.NamedTemporaryFile(suffix=f'.{file_extension}', delete=False) as temp_file:
+                downloaded_size = 0
                 for chunk in response.iter_content(chunk_size=8192):
                     temp_file.write(chunk)
+                    downloaded_size += len(chunk)
                 temp_file_path = temp_file.name
+            
+            logger.info(f"Downloaded {downloaded_size} bytes to {temp_file_path}")
             
             try:
                 # Upload to Telegram
                 caption = f"🎵 {video_info['title']}\n📹 Video ID: {video_info['id']}\n🎯 Type: {stream_type}"
+                logger.info(f"Uploading to Telegram channel {self.channel_id}...")
                 
                 if stream_type == 'video':
+                    logger.info("Sending as video file...")
                     message = await self.bot.send_video(
                         chat_id=self.channel_id,
                         video=temp_file_path,
@@ -85,6 +109,7 @@ class TelegramCache:
                     )
                     file_id = message.video.file_id if message and message.video else None
                 else:
+                    logger.info("Sending as audio file...")
                     message = await self.bot.send_audio(
                         chat_id=self.channel_id,
                         audio=temp_file_path,
@@ -92,6 +117,11 @@ class TelegramCache:
                         title=video_info['title']
                     )
                     file_id = message.audio.file_id if message and message.audio else None
+                
+                if file_id:
+                    logger.info(f"✅ Successfully uploaded to Telegram! File ID: {file_id}")
+                else:
+                    logger.error("❌ Failed to get file_id from Telegram response")
                 
                 if not file_id:
                     logger.error("Failed to get file ID from Telegram message")

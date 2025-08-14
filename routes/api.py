@@ -44,6 +44,7 @@ async def youtube_endpoint():
         
         # Check cache first
         cached_content = await telegram_cache.get_cached_content(video_id, stream_type)
+        logger.info(f"Cache check for {video_id} ({stream_type}): {'Found' if cached_content else 'Not found'}")
         
         if cached_content:
             # Return cached content
@@ -87,8 +88,17 @@ async def youtube_endpoint():
             "telegram_cached": False
         }
         
-        # Start background caching
-        asyncio.create_task(telegram_cache.cache_content(video_info, stream_type))
+        # Start background caching and wait for it to complete
+        try:
+            cached_file_id = await telegram_cache.cache_content(video_info, stream_type)
+            if cached_file_id:
+                logger.info(f"Successfully cached {video_id} to Telegram with file_id: {cached_file_id}")
+                response["telegram_cached"] = True
+                response["telegram_file_id"] = cached_file_id
+            else:
+                logger.warning(f"Failed to cache {video_id} to Telegram")
+        except Exception as e:
+            logger.error(f"Error caching to Telegram: {e}")
         
         logger.info(f"Served new content for {video_id} ({stream_type}), caching in background")
         return jsonify(response)
@@ -130,6 +140,8 @@ async def health_check():
         }
     })
 
+
+
 @api_bp.route('/info')
 async def api_info():
     """API information endpoint"""
@@ -142,6 +154,7 @@ async def api_info():
             "/stream/<id>": "Stream proxy endpoint",
             "/admin": "Admin panel for API key management",
             "/health": "Health check endpoint",
+            "/test-telegram": "Test Telegram upload functionality",
             "/info": "API information endpoint"
         },
         "parameters": {
