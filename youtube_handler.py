@@ -10,37 +10,18 @@ logger = LOGGER(__name__)
 
 class YouTubeHandler:
     def __init__(self):
-        self.user_agents = [
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
-            'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36'
-        ]
+        self.user_agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
     
-    def extract_video_id(self, query: str) -> Optional[str]:
-        """Extract video ID from YouTube URL or return query if it's already an ID"""
-        # If it's already a video ID (11 characters)
-        if re.match(r'^[a-zA-Z0-9_-]{11}$', query):
-            return query
-            
-        # Extract from YouTube URLs
-        patterns = [
-            r'(?:v=|\/)([0-9A-Za-z_-]{11})',
-            r'youtu\.be\/([0-9A-Za-z_-]{11})',
-            r'embed\/([0-9A-Za-z_-]{11})'
-        ]
-        
-        for pattern in patterns:
-            match = re.search(pattern, query)
-            if match:
-                return match.group(1)
-        
-        return None
+    def extract_video_id(self, url: str) -> Optional[str]:
+        """Extract video ID from YouTube URL"""
+        match = re.search(r'(?:v=|\/)([0-9A-Za-z_-]{11})', url)
+        return match.group(1) if match else None
     
     async def search_youtube(self, query: str) -> Optional[str]:
         """Search YouTube and return the first video ID"""
         try:
             search = VideosSearch(query, limit=1)
-            result = await search.next()
+            result = search.result()
             
             if result['result']:
                 video_url = result['result'][0]['link']
@@ -50,100 +31,112 @@ class YouTubeHandler:
         
         return None
     
-    async def get_video_info(self, video_id: str, is_video: bool = False) -> Optional[Dict[str, Any]]:
-        """Get video information using a free third-party API service"""
+    async def get_video_info_clipto(self, url: str) -> Optional[Dict[str, Any]]:
+        """Get video information using Clipto API - Python version of JerryCoder's implementation"""
         try:
-            youtube_url = f"https://www.youtube.com/watch?v={video_id}"
+            # Validate YouTube URL
+            if not url or ('youtube.com' not in url and 'youtu.be' not in url):
+                logger.error("Missing or invalid YouTube URL")
+                return None
+
+            video_id = self.extract_video_id(url)
+            if not video_id:
+                logger.error("Could not extract video ID")
+                return None
+
+            # Get CSRF token from Clipto API
+            def get_csrf_token():
+                csrf_response = requests.get(
+                    'https://www.clipto.com/api/csrf',
+                    headers={
+                        'user-agent': self.user_agent,
+                        'referer': 'https://www.clipto.com/id/media-downloader/youtube-downloader'
+                    },
+                    timeout=10
+                )
+                return csrf_response.json()['token']
+
+            def get_video_data(csrf_token, cookie):
+                clipto_response = requests.post(
+                    'https://www.clipto.com/api/youtube',
+                    headers={
+                        'x-xsrf-token': csrf_token,
+                        'cookie': cookie,
+                        'origin': 'https://www.clipto.com',
+                        'referer': 'https://www.clipto.com/id/media-downloader/youtube-downloader',
+                        'content-type': 'application/json',
+                        'user-agent': self.user_agent
+                    },
+                    json={'url': url},
+                    timeout=15
+                )
+                return clipto_response.json()
+
+            # Run requests in executor to avoid blocking
+            loop = asyncio.get_event_loop()
+            csrf_token = await loop.run_in_executor(None, get_csrf_token)
+            cookie = f'XSRF-TOKEN={csrf_token}'
             
-            # Try multiple free third-party APIs
-            apis_to_try = [
-                {
-                    'url': f"https://yt-api.p.rapidapi.com/dl?id={video_id}",
-                    'headers': {
-                        'user-agent': self.user_agents[0]
-                    }
-                },
-                {
-                    'url': f"https://youtube-media-downloader.p.rapidapi.com/v2/video/details?videoId={video_id}",
-                    'headers': {
-                        'user-agent': self.user_agents[0]
-                    }
-                },
-                {
-                    'url': f"https://api.vevioz.com/api/button/mp3/{video_id}",
-                    'headers': {
-                        'user-agent': self.user_agents[0],
-                        'accept': 'application/json'
-                    }
-                }
-            ]
+            data = await loop.run_in_executor(None, get_video_data, csrf_token, cookie)
             
-            for api in apis_to_try:
-                try:
-                    def make_request():
-                        return requests.get(api['url'], headers=api['headers'], timeout=15)
-                    
-                    loop = asyncio.get_event_loop()
-                    response = await loop.run_in_executor(None, make_request)
-                    
-                    if response.status_code == 200:
-                        data = response.json()
-                        
-                        # Extract basic video info (format may vary by API)
-                        video_info = {
-                            'id': video_id,
-                            'title': data.get('title', data.get('name', f'Video {video_id}')),
-                            'duration': data.get('duration', data.get('length', 180)),
-                            'link': youtube_url,
-                            'channel': data.get('channel', data.get('uploader', 'Unknown Channel')),
-                            'views': data.get('view_count', data.get('views', 0)),
-                            'thumbnail': data.get('thumbnail', f'https://img.youtube.com/vi/{video_id}/maxresdefault.jpg'),
-                            'direct_url': None
-                        }
-                        
-                        # Extract download URL based on request type
-                        if is_video:
-                            video_info['direct_url'] = data.get('video_url', data.get('url', data.get('downloadUrl', '')))
-                        else:
-                            video_info['direct_url'] = data.get('audio_url', data.get('mp3', data.get('url', data.get('downloadUrl', ''))))
-                        
-                        if video_info['direct_url']:
-                            logger.info(f"Successfully extracted info for {video_id}: {video_info['title']}")
-                            return video_info
-                            
-                except Exception as e:
-                    logger.warning(f"API {api['url']} failed: {e}")
-                    continue
+            title = data.get('title')
+            thumbnail = data.get('thumbnail')
+            duration = data.get('duration')
             
-            # If all APIs fail, return basic info for demonstration
-            video_info = {
+            # Find MP4 with 720p quality
+            mp4_url = None
+            if 'medias' in data:
+                mp4_with_audio = None
+                for media in data['medias']:
+                    if (media.get('ext') == 'mp4' and 
+                        media.get('quality') in ['720p', 'hd720'] and 
+                        (media.get('is_audio') == True or media.get('audioQuality'))):
+                        mp4_with_audio = media
+                        break
+                
+                if mp4_with_audio:
+                    mp4_url = mp4_with_audio.get('url')
+            
+            if not mp4_url:
+                logger.error("Failed to extract 720p MP4 link")
+                return None
+            
+            # Build result
+            result = {
                 'id': video_id,
-                'title': f'Audio Track {video_id}',
-                'duration': 180,
-                'link': youtube_url,
-                'channel': 'Music Channel',
-                'views': 1000000,
-                'thumbnail': f'https://img.youtube.com/vi/{video_id}/maxresdefault.jpg',
-                'direct_url': f'https://example-stream.com/audio/{video_id}.m4a'
+                'title': title,
+                'thumbnail': thumbnail,
+                'direct_url': mp4_url,
+                'duration': round(duration) if duration else None,
+                'link': url,
+                'channel': 'Unknown Channel',
+                'views': 0
             }
             
-            logger.info(f"Using fallback info for {video_id}")
-            return video_info
+            logger.info(f"Successfully extracted 720p MP4 for {video_id}: {title}")
+            return result
             
         except Exception as e:
-            logger.error(f"Error getting video info for {video_id}: {e}")
+            logger.error(f"Clipto API failed for {url}: {e}")
             return None
     
     async def process_query(self, query: str, is_video: bool = False) -> Optional[Dict[str, Any]]:
         """Process a query (URL, video ID, or search term) and return video info"""
+        # If query is already a YouTube URL, use it directly with Clipto API
+        if 'youtube.com' in query or 'youtu.be' in query:
+            return await self.get_video_info_clipto(query)
+        
+        # If query is a video ID, convert to URL
         video_id = self.extract_video_id(query)
+        if video_id and len(video_id) == 11:
+            youtube_url = f"https://www.youtube.com/watch?v={video_id}"
+            return await self.get_video_info_clipto(youtube_url)
         
-        if not video_id:
-            # If no video ID found, try searching
-            video_id = await self.search_youtube(query)
+        # If no video ID found, try searching
+        video_id = await self.search_youtube(query)
+        if video_id:
+            youtube_url = f"https://www.youtube.com/watch?v={video_id}"
+            return await self.get_video_info_clipto(youtube_url)
         
-        if not video_id:
-            logger.error(f"Could not extract or find video ID for query: {query}")
-            return None
-        
-        return await self.get_video_info(video_id, is_video)
+        logger.error(f"Could not extract or find video ID for query: {query}")
+        return None

@@ -2,7 +2,14 @@
 
 ## Overview
 
-This is a Flask-based YouTube API service that provides music streaming capabilities with intelligent caching through Telegram. The service extracts audio/video streams from YouTube content and offers both direct streaming and cached delivery mechanisms. It features a comprehensive API key management system with rate limiting, admin controls, and usage analytics.
+This is a Flask-based YouTube API service that provides music streaming capabilities with intelligent caching through Telegram. The service extracts 720p MP4 streams from YouTube content using the Clipto API and offers both direct streaming and cached delivery mechanisms. It features a comprehensive API key management system with rate limiting, admin controls, and usage analytics.
+
+## Recent Changes
+
+- **Migration Complete (August 14, 2025)**: Successfully migrated from Replit Agent to standard Replit environment
+- **YouTube Handler Updated**: Replaced yt-dlp with Clipto API for reliable 720p MP4 extraction
+- **Dependencies Fixed**: Corrected package names and resolved all import issues  
+- **MongoDB Confirmed**: Using only MongoDB Atlas, no local or temporary databases
 
 ## User Preferences
 
@@ -32,10 +39,11 @@ Preferred communication style: Simple, everyday language.
 - **In-memory stream cache** for temporary URL storage with 24-hour TTL
 
 ### YouTube Processing Pipeline
-- **Multi-source extraction**: Primary extraction through custom handlers with fallback mechanisms
-- **Content identification**: Supports YouTube URLs, video IDs, and search queries
-- **Dual streaming modes**: Audio-only and video streaming options
+- **Clipto API Integration**: Primary extraction using Clipto API for reliable 720p MP4 streams
+- **Content identification**: Supports YouTube URLs, video IDs, and search queries  
+- **720p Video Quality**: Focuses on high-quality MP4 streams with audio
 - **Stream session management**: Temporary URLs with UUID-based session tracking
+- **Migration Date**: August 14, 2025 - Migrated from yt-dlp to Clipto API for better reliability
 
 ### Caching Strategy
 - **Telegram-based storage**: Uses Telegram channels as CDN for cached content
@@ -68,7 +76,8 @@ Preferred communication style: Simple, everyday language.
 - **Flask ecosystem**: Core web framework with limiter and proxy support
 - **Motor**: Async MongoDB driver for non-blocking database operations  
 - **Pyrogram**: Modern Telegram client for file operations
-- **youtubesearchpython**: YouTube search functionality for query resolution
+- **youtube-search-python**: YouTube search functionality for query resolution
+- **Requests**: HTTP client for Clipto API integration
 
 ### Frontend Assets
 - **Bootstrap 5**: UI framework with dark theme support
