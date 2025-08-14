@@ -54,7 +54,12 @@ class YouTubeHandler:
                     },
                     timeout=10
                 )
-                return csrf_response.json()['token']
+                csrf_data = csrf_response.json()
+                # Clipto API returns 'csrfToken' not 'token'
+                if 'csrfToken' not in csrf_data:
+                    logger.error(f"CSRF response missing csrfToken: {csrf_data}")
+                    raise ValueError("Failed to get CSRF token")
+                return csrf_data['csrfToken']
 
             def get_video_data(csrf_token, cookie):
                 clipto_response = requests.post(
@@ -70,6 +75,11 @@ class YouTubeHandler:
                     json={'url': url},
                     timeout=15
                 )
+                
+                if clipto_response.status_code != 200:
+                    logger.error(f"Clipto API returned status {clipto_response.status_code}: {clipto_response.text}")
+                    raise ValueError(f"Clipto API failed with status {clipto_response.status_code}")
+                    
                 return clipto_response.json()
 
             # Run requests in executor to avoid blocking
@@ -83,19 +93,29 @@ class YouTubeHandler:
             thumbnail = data.get('thumbnail')
             duration = data.get('duration')
             
-            # Find MP4 with 720p quality
+            # Find best available MP4 format with intelligent fallback
             mp4_url = None
+            selected_quality = None
+            
             if 'medias' in data:
-                mp4_with_audio = None
-                for media in data['medias']:
-                    if (media.get('ext') == 'mp4' and 
-                        media.get('quality') in ['720p', 'hd720'] and 
-                        (media.get('is_audio') == True or media.get('audioQuality'))):
-                        mp4_with_audio = media
-                        break
+                # Priority order: 720p -> any MP4 with audio -> any MP4
+                quality_priorities = [
+                    lambda m: (m.get('ext') == 'mp4' and 
+                              m.get('quality') in ['720p', 'hd720'] and 
+                              (m.get('is_audio') == True or m.get('audioQuality'))),
+                    lambda m: (m.get('ext') == 'mp4' and 
+                              (m.get('is_audio') == True or m.get('audioQuality'))),
+                    lambda m: m.get('ext') == 'mp4'
+                ]
                 
-                if mp4_with_audio:
-                    mp4_url = mp4_with_audio.get('url')
+                for priority_check in quality_priorities:
+                    for media in data['medias']:
+                        if priority_check(media):
+                            mp4_url = media.get('url')
+                            selected_quality = media.get('quality', 'unknown')
+                            break
+                    if mp4_url:
+                        break
             
             if not mp4_url:
                 logger.error("Failed to extract 720p MP4 link")
@@ -113,7 +133,7 @@ class YouTubeHandler:
                 'views': 0
             }
             
-            logger.info(f"Successfully extracted 720p MP4 for {video_id}: {title}")
+            logger.info(f"Successfully extracted {selected_quality} MP4 for {video_id}: {title}")
             return result
             
         except Exception as e:
