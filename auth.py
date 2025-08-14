@@ -166,28 +166,53 @@ def require_api_key(f):
         if not api_key:
             return jsonify({"error": "Missing API key"}), 401
             
-        # Validate API key synchronously
-        async def validate_key():
-            return await AuthManager.validate_api_key(api_key)
-            
+        # Use a simpler sync validation for now to avoid event loop issues
         try:
-            is_valid, key_data, error_msg = asyncio.run(validate_key())
+            from database import api_keys_collection_sync
             
-            if not is_valid:
-                return jsonify({"error": error_msg}), 401
+            # Simple sync validation
+            key_data = api_keys_collection_sync.find_one({"key": api_key})
+            
+            if not key_data:
+                return jsonify({"error": "Invalid API key"}), 401
+            
+            # Check expiration
+            if datetime.utcnow() > key_data['expires_at']:
+                return jsonify({"error": "API key has expired"}), 401
+            
+            # Check daily limit (simplified)
+            if key_data['daily_used'] >= key_data['daily_limit']:
+                return jsonify({"error": "Daily limit exceeded"}), 401
                 
-            # Store key data in request context for the route to use
-            request.api_key_data = key_data
+            # Store key data in g object for the route to use
+            from flask import g
+            g.api_key_data = key_data
             
             # Call the original function
             result = f(*args, **kwargs)
             
-            # If it's an async function, run it
+            # If it's an async function, run it in new event loop
             if asyncio.iscoroutine(result):
-                result = asyncio.run(result)
+                try:
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    result = loop.run_until_complete(result)
+                    loop.close()
+                except Exception as e:
+                    logger.error(f"Async execution error: {e}")
+                    return jsonify({"error": "Processing error"}), 500
                 
-            # Increment usage after successful call
-            asyncio.run(AuthManager.increment_usage(api_key))
+            # Increment usage after successful call (sync version)
+            try:
+                api_keys_collection_sync.update_one(
+                    {"key": api_key},
+                    {
+                        "$inc": {"daily_used": 1, "total_used": 1},
+                        "$set": {"last_used": datetime.utcnow()}
+                    }
+                )
+            except Exception as e:
+                logger.warning(f"Failed to update usage stats: {e}")
             
             return result
             
