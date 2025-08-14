@@ -14,6 +14,13 @@ class YouTubeHandler:
     
     def extract_video_id(self, url: str) -> Optional[str]:
         """Extract video ID from YouTube URL"""
+        if not url:
+            return None
+            
+        # If it's already a video ID (11 characters)
+        if re.match(r'^[a-zA-Z0-9_-]{11}$', url):
+            return url
+            
         match = re.search(r'(?:v=|\/)([0-9A-Za-z_-]{11})', url)
         return match.group(1) if match else None
     
@@ -23,7 +30,7 @@ class YouTubeHandler:
             search = VideosSearch(query, limit=1)
             result = search.result()
             
-            if result['result']:
+            if result and 'result' in result and result['result']:
                 video_url = result['result'][0]['link']
                 return self.extract_video_id(video_url)
         except Exception as e:
