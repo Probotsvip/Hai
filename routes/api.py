@@ -15,24 +15,9 @@ stream_manager = StreamManager()
 
 @api_bp.route('/', methods=['GET'])
 def index():
-    """Root endpoint with API information"""
-    return {
-        "name": "YouTube API Service",
-        "version": "1.0.0",
-        "description": "Production-ready YouTube API with caching and Telegram integration",
-        "endpoints": {
-            "/youtube": "Main YouTube content retrieval endpoint",
-            "/stream/<id>": "Stream proxy endpoint", 
-            "/admin": "Admin panel for API key management",
-            "/health": "Health check endpoint",
-            "/info": "API information endpoint"
-        },
-        "parameters": {
-            "api_key": "Valid API key for authentication (required)",
-            "query": "YouTube URL, video ID, or search term (required)",
-            "video": "Boolean for video stream, default: false (audio)"
-        }
-    }
+    """Root endpoint - Professional UI Landing Page"""
+    from flask import render_template
+    return render_template('index.html')
 
 @api_bp.route('/youtube', methods=['GET'])
 @require_api_key
